@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>ABID</title>
+  <meta name="description" content="ABID: ABID, Bidding is Deciding" />
+  <script src = 'https://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js'></script>
+  <script src = 'https://ajax.googleapis.com/ajax/libs/jqueryui/1.8.18/jquery-ui.min.js'></script>
+  <script src = 'aspot/lib/aspot.js'></script>
+</head>
+<body>
+<div class = "stuff"></div>
+<div id = 'save'>save</div>
+</body>
+</html>
+<script>
+theme = {}
+theme.contenteditable = function(datum, label) {
+  var tag = $("<div class = 'contenteditable' contenteditable = TRUE></div>");
+  var uuid = "uuid-" + aspot.uuid();
+  tag.attr('id', uuid);
+  
+  tag.html(datum.value);
+  theme.style('#'+uuid+':before { content:"'+label+'"}');
+  tag.blur(function() {
+    datum.value = $(this).html();
+  })
+  console.log(tag);
+  return tag;
+}
+theme.dropdown = function(datum, label, options) {
+  var tag = $("<div class = 'dropdown' contenteditable = TRUE></div>");
+  var uuid = "uuid-" + aspot.uuid();
+  tag.data('options', options);
+  tag.attr('id', uuid);
+  tag.html(datum.value);
+  theme.style('#'+uuid+':before { content:"'+label+'"}');
+  tag.focus(theme.helper.dropdown.focus);
+  console.log(tag);
+  return tag;
+}
+
+theme.helper = {};
+theme.helper.dropdown = {};
+theme.helper.dropdown.focus = function(e) {
+  var options = $(this).data('options');
+  var tag = $("<select class = 'dropdown'></select>");
+  var value = $(this).html();
+  tag.data('options', options);
+  $.each(options, function() {
+    var opt = $("<option>"+ this.toString() +"</option>");
+    if(this.toString() == value) {
+      opt.attr("selected", "selected");
+    }
+    tag.append(opt)
+  });
+  tag.attr('id', $(this).attr('id'));
+  tag.blur(theme.helper.dropdown.blur);
+  $(this).replaceWith(tag);
+}
+theme.helper.dropdown.blur = function(e) {
+    value = $(this).val();
+    var options = $(this).data('options');
+    datum.value = value;
+    var tag = $("<div class = 'dropdown' contenteditable = TRUE></div>");
+    tag.data('options', options);
+    tag.html(value);
+    tag.attr('id', $(this).attr('id'));
+    tag.focus(theme.helper.dropdown.focus);
+    $(this).replaceWith(tag);
+}
+
+theme.style = function(style) {
+  console.log($("#abid-style").length);
+  if(!$("#abid-style").length) {
+    $('body').append("<style id = 'abid-style'>");
+  }
+  $("#abid-style").text($("#abid-style").text() + style + "\n");
+}
+theme.div = function(classes) {
+  var tag = $("<div></div>");
+  $.each(classes, function() {
+    tag.addClass(this.toString());
+  });
+  return tag;
+}
+theme.offer = function(datum) {
+    if(!datum.value) {
+      datum[0].value = aspot.uuid(); 
+    }
+    var tag = theme.div(["offer"]);
+    tag.append(theme.dropdown(datum[0].attr('type'), 'Type: ', ['Revenue', 'Offset']));
+    tag.append(theme.contenteditable(datum[0].attr('offerer'), 'Offerer: '));
+    tag.append(theme.contenteditable(datum[0].attr('amount'), 'Amount: $'));
+    return tag;
+}
+$(function() {
+
+  
+  db = aspot.localDB();
+  datum = db.datum("bob");
+  $(".stuff").append(theme.offer(datum.attr("offer")));
+  $("#save").click(function(e) {
+    $("<textarea>" +JSON.stringify(db.store)+"</textarea>").dialog();
+  });
+});
+</script>
+<style>
+.contenteditable {
+    min-height: 2em;
+        min-width: 4em;
+            outline: 1px solid black;
+            }
+</style>
+
