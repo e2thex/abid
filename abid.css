@@ -1,0 +1,35 @@
+.contenteditable {
+  min-height: 2em;
+  min-width: 4em;
+  cursor:pointer;
+}
+.contenteditable:focus {
+  outline: 1px solid black;
+  background : #ddd;
+  cursor:text;
+}
+.load-project {
+  cursor:pointer;
+}
+
+.header > * {
+  background: none repeat scroll 0 0 lightblue;
+  display: inline-block;
+  padding: 5px;
+  border-radius : 5px;
+}
+.current-user {
+display:inline;
+}
+nav.top-bar {
+  margin:0px;
+}
+.workarea {
+  position:relative;
+  
+}
+.workarea .old {
+  position:absolute;
+}
+.workarea >div  {
+  width:100%;

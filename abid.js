@@ -1,58 +1,77 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>ABID</title>
-  <meta name="description" content="ABID: ABID, Bidding is Deciding" />
-  <script src = 'https://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js'></script>
-  <script src = 'https://ajax.googleapis.com/ajax/libs/jqueryui/1.8.18/jquery-ui.min.js'></script>
-  <script src = 'aspot/lib/aspot.js'></script>
-  <script src = './abid.js'></script>
+abid = function (db){
+  setupData(db);
+  abid.addActionHolder(db,"Reports", 'reports');
+  abid.addActionHolder(db,"Admin", 'admin', 'right');
+  abid.addAction(db,'admin', 'Save', function(e) {
+    var out = Object.keys(db.store).map(function(key) { var i = db.store[key]; return {subject:i.subject, predicate:i.predicate, object:i.object}});
+    $.post("index.php?db="+dbname, {data:out})
+    return false;
+  });
+  abid.addAction(db, 'left', 'Add Project', function(e) {
+    $(".details").html("");
+    var datum = db.datum(aspot.uuid());
+    datum.attr('is_a').value =  'project';
+    return abid.theme.fullProject(datum);
+  });
+  abid.addAction(db, 'reports', "All Projects", function(e) {
+    var query = '[."is_a" = "project"]';
+    var userRatio = db.datum("session").attr("currentUser").attr("r_o_ratio").value;
+    table = theme.report(
+      db,
+      query, 
+      ['Title', 'Summary', 'Revenue Offer', 'Offset Offer', 'Net Score'], 
+      [
+        function (d) { return abid.theme.loadProjectLink(d, d.attr('title').value); },
+        function (d) { return abid.theme.loadProjectLink(d, d.attr('summary').value); },
+        function (d) {  
+          return '$' + abid.theme.sum(d.db.query('[.<"offer" = "'+d.value+'" AND ."type" = "revenue"]."amount"')).value;
+        },
+        function (d) {  
+          return '$' + abid.theme.sum(d.db.query('[.<"offer" = "'+d.value+'" AND ."type" = "offset"]."amount"')).value;
+        },
+        function (d) {
+          var totalR =  abid.theme.sum(d.db.query('[.<"offer" = "'+d.value+'" AND ."type" = "revenue"]."amount"')).value;
+          var totalO = abid.theme.sum(d.db.query('[.<"offer" = "'+d.value+'" AND ."type" = "offset"]."amount"')).value;
+          var est = abid.theme.sum(d.db.query('[.<"estimate" = "'+d.value+'" AND ."owner" = "'+ db.datum("session").attr("currentUser").value +'"]."amount"')).value;
+          console.log({t:d.attr("title").value,r:totalR, o:totalO, e:est});
+          if(est) {
+            return userRatio ? (totalR * userRatio*1 + totalO*1)/est : "";
+          }
+          else {
+            return "";
+          }
+        }
+      ]
+    );
+    return table;
+  });
+  abid.addAction(db, 'admin', "All Users", function(e) {
+    var query = '[."is_a" = "user"]';
+    table = theme.report(
+      db,
+      query, 
+      ['User id', "R/O ratio"], 
+      [
+        function (d) { return theme.edit.contenteditable(d, "" ); },
+        function (d) { return theme.edit.contenteditable(d.attr("r_o_ratio"), "" ); },
+      ]
+    );
+    table.tablesorter();
+    return table;
+  });
 
-  <!-- Set the viewport width to device width for mobile -->
-  <meta name="viewport" content="width=device-width" />
-  <!-- Included CSS Files (Uncompressed) -->
-  <!--
-  <link rel="stylesheet" href="stylesheets/foundation.css">
-  -->
-  <!-- Included CSS Files (Compressed) -->
-  <link rel="stylesheet" href="stylesheets/foundation.min.css">
-  <link rel="stylesheet" href="stylesheets/app.css">
-  <script src="javascripts/modernizr.foundation.js"></script>
-  <!-- IE Fix for HTML5 Tags -->
-  <!--[if lt IE 9]>
-  <script src="http://html5shiv.googlecode.com/svn/trunk/html5.js"></script>
-  <![endif]-->
-
-</head>
-<body>
-<!-- Basic Needs -->
-<nav class="top-bar">
-  <ul>
-    <li class="name"><h1><a href="#">Phase2 ABID</a></h1></li>
-    <li class="toggle-topbar"><a href="#"></a></li>
-  </ul>
-  <section>
-    <ul class="left">
-    </ul>
-
-    <ul class="right">
-    </ul>
-  </section>
-</nav>
-
-<ul class="breadcrumbs">
-  <li></li>
-  <li><a class ="bc-home" href="#">Home</a></li>
-</ul>
-<div class = "row">
-  <div class = "workarea twelve columns panel"></div>
-</div>
-
-</body>
-</html>
-<script>
-abid = {};
+  abid.addAction(db, 'admin', "Users", function(e) {
+    var tag = theme.isAList(db, "user");
+    return tag;
+  });
+  abid.addAction(db,'right', '<div class = "current-user"></div>', function(e) { return false;
+  });
+  $(".current-user").append(theme.dropdown.query(session.attr("currentUser"), "Current User: ", '[."is_a" = "user"]'));
+  $(".bc-home").click(function(){
+    $(this).parent("li").addClass("current").nextAll().remove();
+    $(".workarea").html("");
+  });
+}
 abid.theme = {};
 
 abid.theme.fullOffers = function(datum) {
@@ -94,12 +113,16 @@ abid.theme.fullProject = function(datum) {
   main.append(theme.edit.contenteditable(datum.attr('title'), 'Title: '));
   main.append(theme.edit.contenteditable(datum.attr('summary'), 'Summary: '));
   main.append(theme.edit.contenteditable(datum.attr('requirements'), 'Requirements: '));
+  main.append(theme.dropdown.query(datum.attr('proposed_by'),"Proposed By: ", '[."is_a" = "user"]')); 
+  main.append(theme.dropdown.query(datum.attr('type'),"Type: ", '[."is_a" = "project_type"]')); 
   var haveCurrentUser = false;
   var current = datum.db.datum('session').attr('currentUser').value;
   var roffer = abid.getOfferByUser(datum, current, 'revenue');
   second.append(theme.edit.contenteditable(roffer.attr('amount'), 'Your Revenue Offer: $'));
   var ooffer = abid.getOfferByUser(datum, current, 'offset');
   second.append(theme.edit.contenteditable(ooffer.attr('amount'), 'Your Offset Offer: $'));
+  var est = abid.getEstimateByUser(datum, current);
+  second.append(theme.edit.contenteditable(est.attr('amount'), 'Your Estimate: '));
   meta.append(
     theme.display.simple(
       abid.theme.sum(datum.db.query('[.<"offer" = "'+datum.value+'" AND ."type" = "revenue"]."amount"')),
@@ -114,23 +137,22 @@ abid.theme.fullProject = function(datum) {
   );
   tag.append(main).append(second).append(meta);
 
-  //ooffer = datum.db.query('[VALUE = "'+datum.value+'"]."offer"[."offer" = "'+current+'" AND . "type" = "offset"]');
-  //tag.append(theme.edit.contenteditable(ooffer.attr('amount'), 'Your Offset Offer: $'));
-/*
-  datum.attr('offer').forEach(function(offer) {
-    if((!offer.attr('offerer').value) ||
-       (offer.attr('offerer').value == offer.datum.db.datum('session').attr('currentUser').value)) {
-       tag.append(theme.edit.contenteditable(offer.attr('amount'), 'Your Offer Amount: '));
-       tag.append(theme.dropdown(offer.attr('Amount'), 'Your Offer Type: ', ['Revenue', 'Offset']));
-       var haveCurrentUser = true;
-    }
-  });
-  */
   return tag;
 }
 
-abid.getCostByUser = function(datum, currentUser) {
-
+abid.getEstimateByUser = function(datum, currentUser) {
+  var estResult = datum.db.query('[.<"estimate" = "'+datum.value+'"][."owner" = "' + datum.db.datum('session').attr("currentUser").value + '"]');
+  var est = false;
+  if(estResult.length) {
+    est = estResult[0];
+  }
+  else {
+    est = datum.attr("estimate").new();
+    est.value = aspot.uuid();
+    est.attr("owner").value = currentUser;
+    est.attr("is_a").value = "estimate";
+  }
+  return est;
 }
 abid.getOfferByUser = function(datum, currentUser, type) {
   var offerResult = datum.db.query('[.<"offer" = "'+datum.value+'"][."offerer" = "' + datum.db.datum('session').attr("currentUser").value + '" AND ."type" = "'+type+'"]');
@@ -159,11 +181,19 @@ abid.theme.loadProjectLink = function(datum, value) {
 abid.theme.sum = function (query_results) {
   query_results.push({value:0});
   query_results.push({value:0});
-  return query_results.reduce(function(pV, cV, index, array) { return {value :pV.value*1 + cV.value*1} ;});
+  var rtn = query_results.reduce(function(pV, cV, index, array) { 
+    return {value :pV.value*1 + cV.value*1} ;
+  });
+  rtn.value = isNaN(rtn.value) ? 0 : rtn.value;
+  return rtn;
 }
 abid.action = {};
 abid.action.do = function(name, callback, event) {
   var bc = theme.element("a", [], name);
+  var new_content = callback(event);
+  if(!new_content) {
+    return;
+  }
   function trans(currentContent, direction) {
     var current = theme.element("div", ['current']);
     var wa = $(".workarea");
@@ -184,7 +214,7 @@ abid.action.do = function(name, callback, event) {
     $(this).parent('li').addClass("current");
  
   });
-  trans(callback(event), 'left');
+  trans(new_content, 'left');
   var li = theme.element('li', [], bc);
   $(".breadcrumbs").find('li.current').nextAll().remove();
   $(".breadcrumbs").find('li').removeClass("current");
@@ -192,7 +222,7 @@ abid.action.do = function(name, callback, event) {
   $(".breadcrumbs").append(li);
 }
 
-abid.addActionHolder = function (name, id, parent) {
+abid.addActionHolder = function (db,name, id, parent) {
   parent = typeof parent == 'undefined' ? 'left' : parent;
   var menu_identifier = ".top-bar ." + parent;
   var itemlabel = theme.element("a", [], name);
@@ -201,7 +231,7 @@ abid.addActionHolder = function (name, id, parent) {
   item.append(itemlabel).append(itemul);
   $(menu_identifier).append(item);
 }
-abid.addAction = function (parent, name, callback) {
+abid.addAction = function (db, parent, name, callback) {
   var menu_identifier = ".top-bar ." + parent;
   var item = theme.element("a", [], name);
   item.click(function (e) {
@@ -209,73 +239,21 @@ abid.addAction = function (parent, name, callback) {
   });
   $(menu_identifier).append(theme.element('li', [], item));
 }
+pullData = function() {
+  var db = {};
+  $.getJSON("index.php?db="+dbname+"&data=true", function(data) {
+    db = aspot.localDB(data)
+    abid(db);
+  });
+}
 $(function() {
-  db = aspot.localDB();
-  setupData();
-  var datum = db.datum("bob");
-  abid.addActionHolder("Reports", 'reports');
-  abid.addActionHolder("Admin", 'admin', 'right');
-
-  abid.addAction('admin', 'Save', function(e) {
-    var out = Object.keys(db.store).map(function(key) { var i = db.store[key]; return {subject:i.subject, predicate:i.predicate, object:i.object}});
-    $("<textarea>" +JSON.stringify(out)+"</textarea>").dialog();
-  });
-  abid.addAction('left', 'Add Project', function(e) {
-    $(".details").html("");
-    var datum = db.datum(aspot.uuid());
-    datum.attr('is_a').value =  'project';
-    return abid.theme.fullProject(datum);
-  });
-  abid.addAction('reports', "All Projects", function(e) {
-    var query = '[."is_a" = "project"]';
-    var userRatio = db.datum("session").attr("currentUser").attr("r_o_ratio").value;
-    table = theme.report(
-      query, 
-      ['Title', 'Summary', 'Revenue Offer', 'Offset Offer', 'Net Offer'], 
-      [
-        function (d) { return abid.theme.loadProjectLink(d, d.attr('title').value); },
-        function (d) { return abid.theme.loadProjectLink(d, d.attr('summary').value); },
-        function (d) {  
-          return '$' + abid.theme.sum(d.db.query('[.<"offer" = "'+d.value+'" AND ."type" = "revenue"]."amount"')).value;
-        },
-        function (d) {  
-          return '$' + abid.theme.sum(d.db.query('[.<"offer" = "'+d.value+'" AND ."type" = "offset"]."amount"')).value;
-        },
-        function (d) {
-          var totalR =  abid.theme.sum(d.db.query('[.<"offer" = "'+d.value+'" AND ."type" = "revenue"]."amount"')).value;
-          var totalO = abid.theme.sum(d.db.query('[.<"offer" = "'+d.value+'" AND ."type" = "offset"]."amount"')).value;
-          return userRatio ? '$' + (totalR * userRatio*1 + totalO*1) : "";
-        }
-      ]
-    );
-    return table;
-  });
-  abid.addAction('admin', "All Users", function(e) {
-    var query = '[."is_a" = "user"]';
-    table = theme.report(
-      query, 
-      ['User id', "R/O ratio"], 
-      [
-        function (d) { return theme.edit.contenteditable(d, "" ); },
-        function (d) { return theme.edit.contenteditable(d.attr("r_o_ratio"), "" ); },
-      ]
-    );
-    return table;
-  });
-
-  abid.addAction('right', '<div class = "current-user"></div>', function(e) {
-  });
-  $(".current-user").append(theme.dropdown.query(session.attr("currentUser"), "Current User: ", '[."is_a" = "user"]'));
-  $(".bc-home").click(function(){
-    $(this).parent("li").addClass("current").nextAll().remove();
-    $(".workarea").html("");
-    
-  });
-
+  //db = aspot.localDB();
+  db = pullData();
+  //setupData();
 });
 
-var setupData = function() {
-
+var setupData = function(db) {
+  /*
   a = db.datum(aspot.uuid());
   a.attr('is_a').value = 'project';
   a.attr('title').value = 'project a';
@@ -286,6 +264,8 @@ var setupData = function() {
   b.attr('title').value = 'project b';
   b.attr('summary').value = 'project b desc';
   b.attr('requirements').value = 'project b req';
+  */
+  /*
   u1 = db.datum("alpha");
   u1.attr("is_a").value = 'user';
   u1 = db.datum("bravo");
@@ -294,10 +274,12 @@ var setupData = function() {
   u1.attr("is_a").value = 'user';
   u1 = db.datum("R and D");
   u1.attr("is_a").value = 'user';
-  u1 = db.datum("sales");
+  u1 = db.datum("marketing");
   u1.attr("is_a").value = 'user';
+  */
   session = db.datum("session");
   session.attr("currentUser").value = '';
+  /*
   offer1 = db.datum(aspot.uuid());
   offer1.attr("offerer").value = "bravo";
   offer1.attr("amount").value = "10000";
@@ -308,61 +290,20 @@ var setupData = function() {
   offer2.attr("amount").value = "1000";
   offer2.attr("type").value = "revenue";
   a.attr("offer").new().value = offer2.value;
+  */
   
 
   //console.log(db.query('."offer"[."offerer" = "alpha"]'));
   //console.log(db.query('."offer"[."offerer" = "bravo"]'));
-  console.log(db.query('[."offerer" = "alpha"]."amount"'));
-  console.log(db.query('[.<"offer" = "'+a.value+'"][."type" = "revenue"]."amount"'));
-  console.log(db.query('[.<"offer" = "'+a.value+'"][."type" = "revenue"]'));
-  console.log(db.query('[.<"offer" = "'+b.value+'" AND ."type" = "revenue"]."amount"'));
-  console.log(db.query('[.<"offer" = "'+b.value+'"][."type" = "revenue"]'));
+  //console.log(db.query('[."offerer" = "alpha"]."amount"'));
+  //console.log(db.query('[.<"offer" = "'+a.value+'"][."type" = "revenue"]."amount"'));
+  //console.log(db.query('[.<"offer" = "'+a.value+'"][."type" = "revenue"]'));
+  //console.log(db.query('[.<"offer" = "'+b.value+'" AND ."type" = "revenue"]."amount"'));
+  //console.log(db.query('[.<"offer" = "'+b.value+'"][."type" = "revenue"]'));
   //console.log(db.query('[SELF = "'+a.value+'"]."offer"[."offerer" = "bravo"]'));
   //console.log(db.query('[.<"offer" = "'+a.value+'"]'));
   //console.log(db.query('[.>"offer" = "'+a.value+'"]'));
   //console.log(db.query('[SELF = "'+a.value+'"]."offer"'));
   //console.log(db.query('[SELF = "'+b.value+'"]."offer"'));
 };
-
-
-</script>
-<style>
-.contenteditable {
-  min-height: 2em;
-  min-width: 4em;
-  cursor:pointer;
-}
-.contenteditable:focus {
-  outline: 1px solid black;
-  background : #ddd;
-  cursor:text;
-}
-.load-project {
-  cursor:pointer;
-}
-
-.header > * {
-  background: none repeat scroll 0 0 lightblue;
-  display: inline-block;
-  padding: 5px;
-  border-radius : 5px;
-}
-.current-user {
-display:inline;
-}
-nav.top-bar {
-  margin:0px;
-}
-.workarea {
-  position:relative;
-  
-}
-.workarea .old {
-  position:absolute;
-}
-.workarea >div  {
-  width:100%;
-}
-
-</style>
 
